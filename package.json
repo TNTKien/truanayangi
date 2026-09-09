@@ -6,9 +6,13 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vite --config vite.pages.config.ts",
-    "build": "vite build --config vite.pages.config.ts",
-    "preview": "vite preview --config vite.pages.config.ts",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "npm run build && vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "dev:pages": "vite --config vite.pages.config.ts",
+    "build:pages": "vite build --config vite.pages.config.ts",
+    "preview:pages": "vite preview --config vite.pages.config.ts",
     "lint": "oxlint"
   },
   "dependencies": {

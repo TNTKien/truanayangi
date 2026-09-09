@@ -25,6 +25,32 @@ Case image: Steam economy image referenced by https://github.com/ByMykel/CSGO-AP
 
 ## Development
 
+```bash
 npm install
 npm run dev
 npm run build
+npm run preview
+```
+
+The default Vite config targets Cloudflare Workers. The existing GitHub Pages-style build remains available with:
+
+```bash
+npm run dev:pages
+npm run build:pages
+npm run preview:pages
+```
+
+## Deploy to Cloudflare Workers
+
+The app is configured as a React SPA using the Cloudflare Vite plugin and Workers Static Assets.
+
+Authenticate Wrangler once, then build and deploy:
+
+```bash
+npx wrangler login
+npm run deploy
+```
+
+`npm run build` produces the Cloudflare deployment output in `dist/`, including the generated Wrangler configuration. `npm run deploy` builds first and then deploys that output to the `truanayangi` Worker.
+
+The frontend continues to use the counter endpoint from `counter/public-config.json`. To override it for a deployment, set `NEXT_PUBLIC_COUNTER_API_URL` at build time.
