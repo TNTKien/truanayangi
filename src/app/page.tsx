@@ -4,14 +4,15 @@ import { BookOpen, ExternalLink, History, RefreshCw, Sparkles, Volume2, VolumeX 
 import { CaseAudio } from '@/lib/case-audio';
 import { createSpinProfile, spinProgress, stopFraction } from '@/lib/case-mechanics';
 import {
+  fetchGenres,
   fetchMangaPool,
   fetchRandomManga,
-  fetchTags,
   type MangaDemographic,
   type MangaFilters,
+  type MangaGenreOption,
   type MangaItem,
+  type MangaSource,
   type MangaStatus,
-  type MangaTag,
 } from '@/lib/manga-api';
 
 const colors = ['#4b69ff', '#8847ff', '#d32ce6', '#eb4b4b', '#e4ae39'];
@@ -32,11 +33,16 @@ function formatNumber(value: number) {
 }
 
 function statusLabel(status: string | null) {
-  return ({ ongoing: 'Đang tiến hành', completed: 'Hoàn thành', hiatus: 'Tạm ngưng', cancelled: 'Đã hủy' } as Record<string, string>)[status || ''] || 'Không rõ';
+  return ({ ongoing: 'Đang tiến hành', completed: 'Hoàn thành', hiatus: 'Tạm ngưng', cancelled: 'Đã hủy', unknown: 'Không rõ' } as Record<string, string>)[status || ''] || 'Không rõ';
 }
 
 function demographicLabel(value: string | null) {
   return ({ shounen: 'Shounen', shoujo: 'Shoujo', seinen: 'Seinen', josei: 'Josei', none: 'Khác' } as Record<string, string>)[value || ''] || 'Khác';
+}
+
+function sourceListLabel(sources: MangaSource[]) {
+  const labels = sources.map((source) => source === 'wd' ? 'wd.suicaodex.com' : 'moe.suicaodex.com');
+  return labels.length ? labels.join(' + ') : 'không có nguồn khả dụng';
 }
 
 function MangaCard({ manga, slot, compact = false }: { manga: MangaItem; slot?: number; compact?: boolean }) {
@@ -46,14 +52,14 @@ function MangaCard({ manga, slot, compact = false }: { manga: MangaItem; slot?: 
   } as React.CSSProperties;
 
   return (
-    <article className={`manga-card ${compact ? 'compact' : ''}`} style={style} data-manga-id={manga.id}>
+    <article className={`manga-card ${compact ? 'compact' : ''}`} style={style} data-manga-id={manga.sourceKey}>
       <span className="tier">{tiers[manga.rarity]}</span>
       <div className="cover-wrap">
         {manga.coverUrl ? <img src={manga.coverUrl} alt={`Bìa ${manga.title}`} loading={compact ? 'lazy' : 'eager'} /> : <div className="cover-fallback"><BookOpen size={48} /></div>}
       </div>
       <div className="card-copy">
         <strong title={manga.title}>{manga.title}</strong>
-        <span>{manga.year || '—'} · {statusLabel(manga.status)}</span>
+        <span>{manga.sourceLabel} · {manga.year || statusLabel(manga.status)}</span>
       </div>
     </article>
   );
@@ -69,15 +75,15 @@ function ResultDialog({ manga, onClose }: { manga: MangaItem; onClose: () => voi
           {manga.coverUrl ? <img src={manga.coverUrl} alt={`Bìa ${manga.title}`} /> : <div className="cover-fallback"><BookOpen size={64} /></div>}
         </div>
         <div className="result-content">
-          <span className="result-kicker"><Sparkles size={14} /> Hôm nay đọc</span>
+          <span className="result-kicker"><Sparkles size={14} /> Hôm nay đọc · {manga.sourceLabel}</span>
           <h2 id="result-title">{manga.title}</h2>
           <div className="result-meta">
-            <span>{statusLabel(manga.status)}</span><span>{demographicLabel(manga.demographic)}</span>{manga.year ? <span>{manga.year}</span> : null}
+            <span>{statusLabel(manga.status)}</span>{manga.demographic ? <span>{demographicLabel(manga.demographic)}</span> : null}{manga.year ? <span>{manga.year}</span> : null}
           </div>
           {genres.length ? <div className="tag-list">{genres.map((tag) => <span key={tag.id}>{tag.name}</span>)}</div> : null}
           {manga.description ? <p>{manga.description}</p> : <p className="muted">Chưa có mô tả.</p>}
           <div className="stats"><span>{formatNumber(manga.views)} lượt xem</span><span>{formatNumber(manga.follows)} theo dõi</span><span>{formatNumber(manga.chapters)} chương</span></div>
-          <a className="read-button" href={manga.readerUrl} target="_blank" rel="noreferrer">Đọc trên Suicaodex <ExternalLink size={17} /></a>
+          <a className="read-button" href={manga.readerUrl} target="_blank" rel="noreferrer">Đọc trên {manga.sourceLabel} <ExternalLink size={17} /></a>
         </div>
       </section>
     </div>
@@ -85,12 +91,13 @@ function ResultDialog({ manga, onClose }: { manga: MangaItem; onClose: () => voi
 }
 
 export default function Home() {
-  const [tags, setTags] = useState<MangaTag[]>([]);
+  const [genres, setGenres] = useState<MangaGenreOption[]>([]);
   const [genre, setGenre] = useState('');
   const [status, setStatus] = useState<MangaStatus | ''>('');
   const [demographic, setDemographic] = useState<MangaDemographic | ''>('');
   const [pool, setPool] = useState<MangaItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [activeSources, setActiveSources] = useState<MangaSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [choosing, setChoosing] = useState(false);
   const [apiError, setApiError] = useState('');
@@ -107,18 +114,24 @@ export default function Home() {
   const frame = useRef(0);
   const audio = useRef<CaseAudio | null>(null);
 
+  const selectedGenre = useMemo(() => genres.find((item) => item.key === genre), [genres, genre]);
   const filters = useMemo<MangaFilters>(() => ({
-    ...(genre ? { tagId: genre } : {}),
+    ...(selectedGenre ? { genre: selectedGenre } : {}),
     ...(status ? { status } : {}),
     ...(demographic ? { demographic } : {}),
-  }), [genre, status, demographic]);
+  }), [selectedGenre, status, demographic]);
 
   useEffect(() => {
     document.documentElement.lang = 'vi';
     document.title = 'Hôm nay đọc gì?';
     try {
       const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-      if (Array.isArray(saved)) setRecentIds(saved.filter((id): id is string => typeof id === 'string').slice(0, HISTORY_LIMIT));
+      if (Array.isArray(saved)) {
+        setRecentIds(saved
+          .filter((id): id is string => typeof id === 'string')
+          .map((id) => id.includes(':') ? id : `wd:${id}`)
+          .slice(0, HISTORY_LIMIT));
+      }
       setSpinCount(Number(localStorage.getItem(SPIN_KEY) || 0) || 0);
     } catch {}
   }, []);
@@ -132,7 +145,7 @@ export default function Home() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchTags(controller.signal).then(setTags).catch(() => {});
+    fetchGenres(controller.signal).then(setGenres).catch(() => {});
     return () => controller.abort();
   }, []);
 
@@ -141,16 +154,18 @@ export default function Home() {
     setLoading(true);
     setApiError('');
     fetchMangaPool(filters, controller.signal)
-      .then(({ items, total: count }) => {
+      .then(({ items, total: count, sources }) => {
         setPool(items);
         setTotal(count);
+        setActiveSources(sources);
         if (!spinning) setReel(items.slice(0, 12).map((manga, id) => ({ manga, id })));
         if (!items.length) setApiError('Không tìm thấy manga phù hợp với bộ lọc này.');
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         setPool([]);
-        setApiError('Không tải được dữ liệu từ wd.suicaodex.com. Hãy thử lại.');
+        setActiveSources([]);
+        setApiError('Không tải được dữ liệu từ các nguồn manga. Hãy thử lại.');
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -158,13 +173,13 @@ export default function Home() {
 
   const visiblePool = useMemo(() => pool.slice(0, 18), [pool]);
   const available = useMemo(() => {
-    const unseen = pool.filter((manga) => !recentIds.includes(manga.id));
+    const unseen = pool.filter((manga) => !recentIds.includes(manga.sourceKey));
     return unseen.length >= 5 ? unseen : pool;
   }, [pool, recentIds]);
 
   const saveWinner = useCallback((winner: MangaItem) => {
     setRecentIds((current) => {
-      const next = [winner.id, ...current.filter((id) => id !== winner.id)].slice(0, HISTORY_LIMIT);
+      const next = [winner.sourceKey, ...current.filter((id) => id !== winner.sourceKey)].slice(0, HISTORY_LIMIT);
       try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch {}
       return next;
     });
@@ -183,8 +198,8 @@ export default function Home() {
 
     let winner: MangaItem;
     try {
-      const fromApi = await fetchRandomManga(filters);
-      winner = recentIds.includes(fromApi.id) && available.length ? randomFrom(available) : fromApi;
+      const fromApi = await fetchRandomManga(filters, pool);
+      winner = recentIds.includes(fromApi.sourceKey) && available.length ? randomFrom(available) : fromApi;
     } catch {
       winner = randomFrom(available.length ? available : pool);
     }
@@ -199,10 +214,10 @@ export default function Home() {
         items.push({ id, manga: winner });
         continue;
       }
-      const candidates = pool.filter((manga) => !recentFillers.includes(manga.id) && manga.id !== winner.id);
+      const candidates = pool.filter((manga) => !recentFillers.includes(manga.sourceKey) && manga.sourceKey !== winner.sourceKey);
       const manga = randomFrom(candidates.length ? candidates : pool);
       items.push({ id, manga });
-      recentFillers.push(manga.id);
+      recentFillers.push(manga.sourceKey);
       if (recentFillers.length > 8) recentFillers.shift();
     }
 
@@ -257,29 +272,29 @@ export default function Home() {
       <main>
         <section className="intro">
           <div>
-            <div className="eyebrow"><span />MANGA DISCOVERY CASE</div>
+            <div className="eyebrow"><span />MULTI-SOURCE MANGA DISCOVERY</div>
             <h1>Hôm nay <em>đọc gì?</em></h1>
-            <p>Chọn gu, mở hòm và để Suicaodex chọn một manga cho bạn.</p>
+            <p>Chọn gu, mở hòm và để Suicaodex + MoeTruyen chọn một manga cho bạn.</p>
           </div>
           <div className="edition"><div><b>{formatNumber(total)}</b><br />MANGA PHÙ HỢP</div><div><b>{spinCount}</b><br />LẦN ĐÃ QUAY</div></div>
         </section>
 
         <section className="case-panel">
-          <div className="case-top"><span><span className="mini-cross">✦</span>SUICAODEX DISCOVERY CASE</span><b>SAFE ONLY</b></div>
+          <div className="case-top"><span><span className="mini-cross">✦</span>MANGA DISCOVERY CASE</span><b>WD + MOE</b></div>
           <div className="reel-window" ref={viewport}>
-            <div className="reel-track" ref={track}>{reel.map(({ manga, id }) => <MangaCard manga={manga} slot={id} key={`${id}-${manga.id}`} />)}</div>
+            <div className="reel-track" ref={track}>{reel.map(({ manga, id }) => <MangaCard manga={manga} slot={id} key={`${id}-${manga.sourceKey}`} />)}</div>
             <div className="selector-line" />
             <div className="reel-fade left" /><div className="reel-fade right" />
             {loading ? <div className="reel-state">Đang tải manga…</div> : null}
           </div>
-          <div className="case-bottom"><span><i />API: wd.suicaodex.com</span><span>Không lặp {HISTORY_LIMIT} manga gần nhất khi có thể</span></div>
+          <div className="case-bottom"><span><i />API: {sourceListLabel(activeSources)}</span><span>Không lặp {HISTORY_LIMIT} manga gần nhất khi có thể</span></div>
         </section>
 
         <section className="control-bar">
           <div className="filters">
-            <label>Thể loại<select value={genre} onChange={(e) => setGenre(e.target.value)} disabled={spinning}><option value="">Tất cả thể loại</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></label>
+            <label>Thể loại<select value={genre} onChange={(e) => setGenre(e.target.value)} disabled={spinning}><option value="">Tất cả thể loại</option>{genres.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}</select></label>
             <label>Trạng thái<select value={status} onChange={(e) => setStatus(e.target.value as MangaStatus | '')} disabled={spinning}><option value="">Tất cả</option><option value="ongoing">Đang tiến hành</option><option value="completed">Hoàn thành</option><option value="hiatus">Tạm ngưng</option><option value="cancelled">Đã hủy</option></select></label>
-            <label>Đối tượng<select value={demographic} onChange={(e) => setDemographic(e.target.value as MangaDemographic | '')} disabled={spinning}><option value="">Tất cả</option><option value="shounen">Shounen</option><option value="shoujo">Shoujo</option><option value="seinen">Seinen</option><option value="josei">Josei</option></select></label>
+            <label>Đối tượng (WD)<select value={demographic} onChange={(e) => setDemographic(e.target.value as MangaDemographic | '')} disabled={spinning}><option value="">Tất cả</option><option value="shounen">Shounen</option><option value="shoujo">Shoujo</option><option value="seinen">Seinen</option><option value="josei">Josei</option></select></label>
             <button className="icon-button" onClick={() => setRefreshNonce((n) => n + 1)} disabled={spinning || loading} title="Đổi pool manga"><RefreshCw size={17} /></button>
           </div>
           <div className="open-wrap"><button className="open-button" onClick={openCase} disabled={spinning || choosing || loading || !pool.length}>{choosing ? 'ĐANG CHỌN…' : spinning ? 'ĐANG QUAY…' : 'MỞ HÒM'}<span>›</span></button><span>{apiError || `${pool.length} manga đang nằm trong hòm`}</span></div>
@@ -287,11 +302,11 @@ export default function Home() {
 
         <section className="inventory-section">
           <div className="section-heading"><div><div className="eyebrow"><span />POOL HIỆN TẠI</div><h2>Manga có thể xuất hiện <span>{pool.length}</span></h2></div><div className="history-actions"><span><History size={14} /> {recentIds.length} manga gần đây</span>{recentIds.length ? <button onClick={clearHistory}>Xóa lịch sử</button> : null}</div></div>
-          {apiError && !pool.length ? <div className="empty-state"><BookOpen size={34} /><strong>{apiError}</strong><button onClick={() => setRefreshNonce((n) => n + 1)}>Thử lại</button></div> : <div className="inventory-grid">{visiblePool.map((manga) => <MangaCard manga={manga} compact key={manga.id} />)}</div>}
+          {apiError && !pool.length ? <div className="empty-state"><BookOpen size={34} /><strong>{apiError}</strong><button onClick={() => setRefreshNonce((n) => n + 1)}>Thử lại</button></div> : <div className="inventory-grid">{visiblePool.map((manga) => <MangaCard manga={manga} compact key={manga.sourceKey} />)}</div>}
         </section>
       </main>
 
-      <footer><span>Hôm Nay Đọc Gì · powered by Suicaodex</span><span>Dữ liệu manga từ wd.suicaodex.com</span></footer>
+      <footer><span>Hôm Nay Đọc Gì · multi-source manga discovery</span><span>Dữ liệu: wd.suicaodex.com + moe.suicaodex.com</span></footer>
       {result ? <ResultDialog manga={result} onClose={() => setResult(null)} /> : null}
     </div>
   );
