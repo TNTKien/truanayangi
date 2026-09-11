@@ -41,6 +41,17 @@ Nếu cookie bị chặn hoặc danh sách món quá lớn, ứng dụng sẽ b�
 
 GitHub Pages chỉ chuyển hướng đến https://truanayangi.com/. Đây là cách giữ chức năng đồng nhất: người truy cập luôn dùng cùng frontend production, API và cookie đăng nhập cùng origin, thay vì một ứng dụng tĩnh thứ hai dễ lệch tính năng hoặc mất đăng nhập khi tải lại. Chỉ xuất bản `pages-redirect/` lên `gh-pages`; không đưa bản build local lên đó. Các sửa đổi UI tĩnh và chuyển động vòng quay dùng chung cần được cập nhật đồng thời ở repo này và frontend production riêng tư.
 
+## Deploy lên Cloudflare Workers
+
+Fork này giữ thêm cấu hình deploy bản Vite SPA lên Cloudflare Workers bằng Workers Static Assets. Đăng nhập Wrangler một lần rồi chạy:
+
+```sh
+npx wrangler login
+pnpm deploy
+```
+
+`pnpm deploy` sẽ build ứng dụng vào `dist/` rồi deploy theo `wrangler.jsonc`. Các route không khớp static asset sẽ fallback về `index.html`, phù hợp với SPA.
+
 ## Đóng góp
 
 Chào đón mọi người [báo lỗi, đề xuất ý tưởng](https://github.com/truanayangi-com/truanayangi/issues/new) hoặc fork repo và [gửi PR vào `main`](https://github.com/truanayangi-com/truanayangi/compare). Bạn có thể dùng tiếng Việt hoặc tiếng Anh, mở draft PR để trao đổi, không cần được duyệt issue trước hay tham gia tổ chức.
