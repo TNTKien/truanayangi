@@ -1,65 +1,58 @@
-# Trưa Nay Ăn Gì 🍜
+# Hôm Nay Đọc Gì? 📚
 
-**Tiếng Việt** · [English](README.en.md)
+Manga discovery roulette xây từ giao diện case-opening của `truanayangi`, dùng dữ liệu từ Suicaodex.
 
-**Website chính thức: [truanayangi.com](https://truanayangi.com/)**
+## Tính năng MVP
 
-Chưa biết ăn gì trưa nay? Mở hòm, quay món và để bữa trưa có chút bất ngờ.
+- tải pool manga từ `https://wd.suicaodex.com`
+- lọc theo thể loại, trạng thái và demographic
+- chỉ lấy manga `safe` và có chapter
+- mỗi lần quay dùng `/manga/random` để chọn winner trên toàn dataset đã filter
+- dùng cover từ `https://i.suicaodex.com`
+- tránh lặp tối đa 30 manga gần nhất bằng `localStorage`
+- mở manga trực tiếp trên Suicaodex
+- giữ animation/sound case-opening và hỗ trợ deploy Cloudflare Workers
 
-Đây là phiên bản cộng đồng chạy trên máy của bạn, không cần đăng nhập hay backend. Bạn có thể lọc món, thêm danh sách món riêng và lưu sở thích ngay trong trình duyệt.
+## Chạy local
 
-## Chạy trên máy
-
-Cần **Node.js 22.12+** và phiên bản **pnpm** ghi trong [package.json](package.json).
+Yêu cầu Node.js 22.12+ và pnpm theo `package.json`.
 
 ```sh
-git clone https://github.com/truanayangi-com/truanayangi.git
-cd truanayangi
 pnpm install --frozen-lockfile
-pnpm start
+pnpm dev
 ```
 
-Mở [127.0.0.1:5173](http://127.0.0.1:5173). Không cần tạo `.env` hay cấu hình dịch vụ bên ngoài. Nếu cổng đang bận, chạy `pnpm start --port 5188`.
+Mặc định frontend dùng:
 
-Các lệnh phát triển:
-
-```sh
-pnpm test       # Chạy kiểm tra
-pnpm build      # Tạo bản build
-pnpm preview    # Xem bản build tại http://127.0.0.1:4173
+```env
+VITE_MANGA_API_URL=https://wd.suicaodex.com
+VITE_MANGA_IMAGE_URL=https://i.suicaodex.com
+VITE_MANGA_READER_URL=https://suicaodex.com/manga
 ```
 
-Máy chủ chỉ lắng nghe trên `127.0.0.1`. Sau khi cài dependencies, ứng dụng tải tài nguyên từ máy; các liên kết bên ngoài chỉ mở khi bạn bấm vào.
+Chỉ cần khai báo các biến trên nếu muốn override.
 
-## Dữ liệu của bạn
-
-Sở thích, danh sách món và lượt quay tự lưu bằng cookie trong trình duyệt hiện tại. Xóa cookie sẽ đặt lại dữ liệu; dữ liệu không đồng bộ giữa các thiết bị. Lượt quay hiển thị là của riêng trình duyệt này.
-
-Nếu cookie bị chặn hoặc danh sách món quá lớn, ứng dụng sẽ báo chưa lưu.
-
-## GitHub Pages và website chính
-
-GitHub Pages chỉ chuyển hướng đến https://truanayangi.com/. Đây là cách giữ chức năng đồng nhất: người truy cập luôn dùng cùng frontend production, API và cookie đăng nhập cùng origin, thay vì một ứng dụng tĩnh thứ hai dễ lệch tính năng hoặc mất đăng nhập khi tải lại. Chỉ xuất bản `pages-redirect/` lên `gh-pages`; không đưa bản build local lên đó. Các sửa đổi UI tĩnh và chuyển động vòng quay dùng chung cần được cập nhật đồng thời ở repo này và frontend production riêng tư.
-
-## Deploy lên Cloudflare Workers
-
-Fork này giữ thêm cấu hình deploy bản Vite SPA lên Cloudflare Workers bằng Workers Static Assets. Đăng nhập Wrangler một lần rồi chạy:
+## Build và deploy Cloudflare Workers
 
 ```sh
-npx wrangler login
+pnpm build
 pnpm deploy
 ```
 
-`pnpm deploy` sẽ build ứng dụng vào `dist/` rồi deploy theo `wrangler.jsonc`. Các route không khớp static asset sẽ fallback về `index.html`, phù hợp với SPA.
+`wrangler.jsonc` phục vụ `dist/` bằng Workers Static Assets với SPA fallback.
 
-## Đóng góp
+## CORS
 
-Chào đón mọi người [báo lỗi, đề xuất ý tưởng](https://github.com/truanayangi-com/truanayangi/issues/new) hoặc fork repo và [gửi PR vào `main`](https://github.com/truanayangi-com/truanayangi/compare). Bạn có thể dùng tiếng Việt hoặc tiếng Anh, mở draft PR để trao đổi, không cần được duyệt issue trước hay tham gia tổ chức.
+`homnaydocgi.suicaodex.com` và `wd.suicaodex.com` vẫn là hai origin khác nhau. API hiện hỗ trợ CORS qua `ALLOWED_ORIGINS`; khi production nên đặt ít nhất:
 
-Chỉ cần mô tả rõ thay đổi và cách đã kiểm tra. Với thay đổi code, hãy chạy test và build khi có thể; maintainer sẽ hỗ trợ và review trước khi merge. Giữ thông tin bí mật ngoài repo và ghi công nguồn sử dụng.
+```env
+ALLOWED_ORIGINS=https://homnaydocgi.suicaodex.com
+```
 
-## Nguồn gốc
+Nếu còn consumer khác, thêm từng origin cách nhau bằng dấu phẩy.
 
-Repo được chuyển từ `nagisanzenin/truanayangi`, giữ nguyên lịch sử Git và đóng góp cộng đồng. Xem [ghi công tác giả và tài nguyên](ATTRIBUTION.md).
+## Nguồn dữ liệu
 
-[GitHub Pages](https://truanayangi-com.github.io/truanayangi/) chuyển hướng đến website chính thức. Chỉ thư mục `pages-redirect/` được xuất bản lên `gh-pages`; mã ứng dụng trong repo dành cho việc chạy trên máy.
+API: https://wd.suicaodex.com/docs
+
+Source API: https://github.com/TNTKien/wd-suicaodex-api
